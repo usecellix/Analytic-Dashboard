@@ -4,20 +4,24 @@ import {
   serializeFrontendLog,
   serializePlannerLog,
   serializeRequestLog,
+  serializeWorkflowTrace,
   type FrontendLogView,
   type PlannerLogView,
   type RequestLogView,
+  type WorkflowTraceView,
 } from "./serialize";
 import type {
   FrontendLogDoc,
   OverviewStats,
   PlannerLogDoc,
   RequestLogDoc,
+  WorkflowTraceDoc,
 } from "./types";
 
 const REQUESTS = "request_logs";
 const PLANNER = "planner_logs";
 const FRONTEND = "frontend_logs";
+const WORKFLOWS = "workflow_traces";
 
 export const DEFAULT_PAGE_SIZE = 25;
 
@@ -176,4 +180,36 @@ export async function getFrontendLog(id: string): Promise<FrontendLogDoc | null>
 export async function getFrontendLogView(id: string): Promise<FrontendLogView | null> {
   const doc = await getFrontendLog(id);
   return doc ? serializeFrontendLog(doc) : null;
+}
+
+export async function listWorkflowTracesPage(
+  page = 1,
+  pageSize = DEFAULT_PAGE_SIZE,
+): Promise<PageResult<WorkflowTraceView>> {
+  const db = await getDb();
+  const col = db.collection<WorkflowTraceDoc>(WORKFLOWS);
+  const { page: safePage, skip } = normalizePage(page, pageSize);
+  const [total, docs] = await Promise.all([
+    col.countDocuments(),
+    col.find().sort({ ts: -1 }).skip(skip).limit(pageSize).toArray(),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return {
+    items: docs.map(serializeWorkflowTrace),
+    total,
+    page: safePage,
+    pageSize,
+    totalPages,
+  };
+}
+
+export async function getWorkflowTrace(id: string): Promise<WorkflowTraceDoc | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const db = await getDb();
+  return db.collection<WorkflowTraceDoc>(WORKFLOWS).findOne({ _id: new ObjectId(id) });
+}
+
+export async function getWorkflowTraceView(id: string): Promise<WorkflowTraceView | null> {
+  const doc = await getWorkflowTrace(id);
+  return doc ? serializeWorkflowTrace(doc) : null;
 }

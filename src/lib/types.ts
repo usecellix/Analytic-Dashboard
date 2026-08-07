@@ -94,3 +94,65 @@ export interface FrontendLogDoc {
   pageUrl?: string;
   details?: unknown;
 }
+
+export type WorkflowTraceStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'clarifying'
+  | 'awaiting_accept'
+  | 'accepted'
+  | 'rejected';
+
+export type WorkflowNodeType =
+  | 'frontend_in'
+  | 'router'
+  | 'tier'
+  | 'planner'
+  | 'executor'
+  | 'verifier'
+  | 'tool'
+  | 'changeset'
+  | 'sse_out'
+  | 'preview'
+  | 'accept'
+  | 'reject'
+  | 'error';
+
+export type WorkflowNodeStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped';
+
+export interface WorkflowNode {
+  id: string;
+  type: WorkflowNodeType;
+  label: string;
+  status: WorkflowNodeStatus;
+  startedAt?: Date | string;
+  endedAt?: Date | string;
+  durationMs?: number;
+  input?: unknown;
+  output?: unknown;
+  meta?: Record<string, unknown>;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface WorkflowTraceDoc {
+  _id: ObjectId;
+  ts: Date;
+  traceId: string;
+  conversationId?: string;
+  changeSetId?: string;
+  message: string;
+  mode?: string;
+  route?: string;
+  tier?: number;
+  status: WorkflowTraceStatus;
+  durationMs?: number;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  lastNodeId?: string;
+}

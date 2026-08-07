@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const NAV = [
   { href: "/", label: "Overview" },
+  { href: "/workflow", label: "Workflow" },
   { href: "/requests", label: "Requests" },
   { href: "/planner", label: "Planner" },
   { href: "/frontend", label: "Frontend" },
@@ -43,7 +44,8 @@ export function Sidebar() {
         })}
       </nav>
       <p className="mt-auto px-5 py-4 text-xs text-slate-500">
-        Reads <code className="font-mono">request_logs</code>,{" "}
+        Reads <code className="font-mono">workflow_traces</code>,{" "}
+        <code className="font-mono">request_logs</code>,{" "}
         <code className="font-mono">planner_logs</code> &amp;{" "}
         <code className="font-mono">frontend_logs</code>
       </p>
