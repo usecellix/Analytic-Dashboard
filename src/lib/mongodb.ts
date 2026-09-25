@@ -1,16 +1,15 @@
-import { MongoClient, Db } from "mongodb";
+import { MongoClient, type Db } from "mongodb";
+import { requireAdmin } from "./session";
 
 const uri = process.env.MONGODB_URL ?? "mongodb://127.0.0.1:27017/cellix";
 const dbName = process.env.MONGODB_DB_NAME ?? "cellix";
 
 declare global {
-  // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
 function createClient(): Promise<MongoClient> {
-  const client = new MongoClient(uri);
-  return client.connect();
+  return new MongoClient(uri).connect();
 }
 
 const clientPromise =
@@ -18,7 +17,9 @@ const clientPromise =
     ? (global._mongoClientPromise ??= createClient())
     : createClient();
 
-export async function getDb(): Promise<Db> {
+/** The only way data code reaches Mongo, so no query can run without an admin session. */
+export async function adminDb(): Promise<Db> {
+  await requireAdmin();
   const client = await clientPromise;
   return client.db(dbName);
 }
