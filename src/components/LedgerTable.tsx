@@ -9,6 +9,7 @@ const ENTRY_LABELS: Record<string, string> = {
   purchase: "Top-up",
   debit: "Usage",
   one_time_grant: "Free credits",
+  expire: "Plan credits expired",
 };
 
 const BUCKET_LABELS: Record<string, string> = {
