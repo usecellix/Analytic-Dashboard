@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { CallTimeline } from "@/components/charts/CallTimeline";
 import { TokenMix } from "@/components/charts/TokenMix";
 import { routeLabel } from "@/components/PromptsTable";
+import { ViewSheet } from "@/components/Sheet";
 import { Badge, Card, OutcomeBadge, StatTile, Table, Td, Th, UserCell } from "@/components/ui";
 import { getPrompt, type Breakdown } from "@/lib/data/prompts";
-import { formatCompact, formatDateTime, formatInt, formatMs, formatPercent, formatUsd } from "@/lib/format";
+import { formatCompact, formatDateTime, formatInt, formatMoney, formatMs, formatPercent } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Prompt" };
 export const dynamic = "force-dynamic";
@@ -25,23 +26,38 @@ function BreakdownTable({ rows, keyLabel, totalCost }: { rows: Breakdown[]; keyL
           <Th align="right">Model time</Th>
           <Th align="right">Cost</Th>
           <Th align="right">Share</Th>
+          <Th align="right">Actions</Th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
-            <Td className="font-medium">{row.key}</Td>
-            <Td align="right">
-              {row.calls}
-              {row.failed ? <span className="ml-1 text-xs text-critical-ink">({row.failed} failed)</span> : null}
+            <Td className="font-medium whitespace-nowrap">{row.key}</Td>
+            <Td align="right" className="whitespace-nowrap">
+              {formatCompact(row.calls)}
+              {row.failed ? <span className="ml-1 text-xs text-critical-ink">{row.failed}f</span> : null}
             </Td>
             <Td align="right">{formatCompact(row.tokens)}</Td>
             <Td align="right">{formatMs(row.latencyMs)}</Td>
-            <Td align="right" className="font-medium">
-              {formatUsd(row.costUsd)}
+            <Td align="right" className="font-medium whitespace-nowrap">
+              {formatMoney(row.costUsd)}
             </Td>
             <Td align="right" className="text-ink-2">
               {formatPercent(totalCost ? row.costUsd / totalCost : 0, 0)}
+            </Td>
+            <Td align="right">
+              <ViewSheet
+                title={row.key}
+                fields={[
+                  { label: keyLabel, value: row.key },
+                  { label: "Calls", value: formatInt(row.calls) },
+                  { label: "Failed", value: formatInt(row.failed) },
+                  { label: "Tokens", value: formatCompact(row.tokens) },
+                  { label: "Model time", value: formatMs(row.latencyMs) },
+                  { label: "Cost", value: formatMoney(row.costUsd) },
+                  { label: "Share", value: formatPercent(totalCost ? row.costUsd / totalCost : 0, 0) },
+                ]}
+              />
             </Td>
           </tr>
         ))}
@@ -91,7 +107,7 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile
           label="Total cost"
-          value={formatUsd(prompt.costUsd)}
+          value={formatMoney(prompt.costUsd)}
           hint={detail.estimatedCostCalls ? `${detail.estimatedCostCalls} call(s) estimated` : "Provider-billed"}
         />
         <StatTile
@@ -157,6 +173,7 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
               <Th align="right">Latency</Th>
               <Th align="right">Cost</Th>
               <Th>Status</Th>
+              <Th align="right">Actions</Th>
             </tr>
           </thead>
           <tbody>
@@ -165,28 +182,28 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
                 <Td align="right" className="text-ink-3">
                   {i + 1}
                 </Td>
-                <Td align="right" className="text-ink-2">
+                <Td align="right" className="text-ink-2 whitespace-nowrap">
                   +{formatMs(new Date(call.startedAt).getTime() - t0)}
                 </Td>
-                <Td className="font-medium">
+                <Td className="font-medium whitespace-nowrap">
                   {call.caller}
-                  {call.attempt > 1 ? <span className="ml-1.5 text-xs font-normal text-warning-ink">retry {call.attempt - 1}</span> : null}
+                  {call.attempt > 1 ? <span className="ml-1.5 text-xs font-normal text-warning-ink">r{call.attempt - 1}</span> : null}
                 </Td>
-                <Td className="max-w-56 truncate text-ink-2" >
+                <Td className="max-w-48 truncate text-ink-2 whitespace-nowrap">
                   <span title={call.servedModel ?? call.model}>{call.servedModel ?? call.model}</span>
-                  {call.streaming ? <span className="ml-1.5 text-xs text-ink-3">stream</span> : null}
+                  {call.streaming ? <span className="ml-1 text-xs text-ink-3">stream</span> : null}
                 </Td>
-                <Td align="right">{formatInt(call.promptTokens)}</Td>
+                <Td align="right">{formatCompact(call.promptTokens)}</Td>
                 <Td align="right" className="text-ink-2">
-                  {formatInt(call.cachedTokens)}
+                  {formatCompact(call.cachedTokens)}
                 </Td>
-                <Td align="right">{formatInt(call.completionTokens)}</Td>
+                <Td align="right">{formatCompact(call.completionTokens)}</Td>
                 <Td align="right" className="text-ink-2">
-                  {formatInt(call.reasoningTokens)}
+                  {formatCompact(call.reasoningTokens)}
                 </Td>
                 <Td align="right">{formatMs(call.latencyMs)}</Td>
-                <Td align="right" className="font-medium">
-                  {formatUsd(call.costUsd)}
+                <Td align="right" className="font-medium whitespace-nowrap">
+                  {formatMoney(call.costUsd)}
                   {call.costEstimated ? <span className="ml-1 text-xs font-normal text-ink-3" title="Provider returned no cost; priced from the model table">est.</span> : null}
                 </Td>
                 <Td>
@@ -201,6 +218,27 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
                       </Badge>
                     </span>
                   )}
+                </Td>
+                <Td align="right">
+                  <ViewSheet
+                    title={`Call ${i + 1}`}
+                    fields={[
+                      { label: "Agent", value: call.caller },
+                      { label: "Model", value: call.servedModel ?? call.model },
+                      { label: "Attempt", value: String(call.attempt) },
+                      { label: "Streaming", value: call.streaming ? "Yes" : "No" },
+                      { label: "Input", value: formatCompact(call.promptTokens) },
+                      { label: "Cached", value: formatCompact(call.cachedTokens) },
+                      { label: "Output", value: formatCompact(call.completionTokens) },
+                      { label: "Reasoning", value: formatCompact(call.reasoningTokens) },
+                      { label: "Latency", value: formatMs(call.latencyMs) },
+                      { label: "Cost", value: `${formatMoney(call.costUsd)}${call.costEstimated ? " (est.)" : ""}` },
+                      { label: "Finish", value: call.finishReason || "—" },
+                      { label: "Error", value: call.errorMessage || "—" },
+                      { label: "Started", value: new Date(call.startedAt).toLocaleString() },
+                      { label: "ID", value: call.id },
+                    ]}
+                  />
                 </Td>
               </tr>
             ))}

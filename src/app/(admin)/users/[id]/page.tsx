@@ -3,10 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LedgerTable } from "@/components/LedgerTable";
 import { PromptsTable } from "@/components/PromptsTable";
+import { ViewSheet } from "@/components/Sheet";
 import { Avatar, Badge, Card, EmptyState, PlanBadge, StatTile, SubscriptionStatusBadge, Table, Td, Th } from "@/components/ui";
 import { PLAN_PRICE_INR } from "@/lib/data/common";
 import { getUser } from "@/lib/data/users";
-import { formatCompact, formatDate, formatInr, formatInt, formatRelative, formatUsd } from "@/lib/format";
+import { formatCompact, formatDate, formatInr, formatInt, formatMoney, formatRelative } from "@/lib/format";
 
 export const metadata: Metadata = { title: "User" };
 export const dynamic = "force-dynamic";
@@ -29,16 +30,20 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         <Avatar name={user.name} email={user.email} image={user.image} size={56} />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{user.name || user.email}</h1>
-          <p className="truncate text-sm text-ink-2">{user.email}</p>
+          <p className="mt-1 truncate text-sm text-ink-2">
+            {user.email}
+            <span className="text-ink-3">
+              {" · "}Joined {formatDate(user.createdAt)}
+              {" · "}Last seen {formatRelative(data.sessions.lastSeenAt)}
+              {" · "}{formatInt(data.conversations)} conversations
+            </span>
+          </p>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-3">
             <PlanBadge plan={balance?.planTier ?? "free"} />
             {user.emailVerified ? <Badge tone="good">verified</Badge> : <Badge>unverified</Badge>}
             {user.providers.map((p) => (
               <Badge key={p}>{p}</Badge>
             ))}
-            <span>Joined {formatDate(user.createdAt)}</span>
-            <span>· Last seen {formatRelative(data.sessions.lastSeenAt)}</span>
-            <span>· {formatInt(data.conversations)} conversations</span>
           </p>
         </div>
         <Link
@@ -50,7 +55,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="AI spend, all time" value={formatUsd(usage.allTime.costUsd)} hint={`${formatUsd(usage.last30.costUsd)} in the last 30 days`} />
+        <StatTile label="AI spend, all time" value={formatMoney(usage.allTime.costUsd)} hint={`${formatMoney(usage.last30.costUsd)} in the last 30 days`} />
         <StatTile label="Prompts" value={formatInt(usage.allTime.prompts)} hint={`${formatInt(usage.last30.prompts)} in the last 30 days`} />
         <StatTile
           label="Model calls"
@@ -80,6 +85,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
                   <Th>Status</Th>
                   <Th align="right">Price</Th>
                   <Th align="right">Renews / ends</Th>
+                  <Th align="right">Actions</Th>
                 </tr>
               </thead>
               <tbody>
@@ -88,15 +94,33 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
                     <Td>
                       <PlanBadge plan={s.planTier} />
                     </Td>
-                    <Td>
-                      <span className="flex items-center gap-1.5">
-                        <SubscriptionStatusBadge status={s.status} />
-                        {s.cancelAtPeriodEnd ? <Badge tone="warning">cancels</Badge> : null}
-                      </span>
+                    <Td className="whitespace-nowrap">
+                      <SubscriptionStatusBadge status={s.status} />
+                      {s.cancelAtPeriodEnd ? (
+                        <span className="ml-1.5">
+                          <Badge tone="warning">cancels</Badge>
+                        </span>
+                      ) : null}
                     </Td>
-                    <Td align="right">{formatInr(PLAN_PRICE_INR[s.planTier] ?? null)}/mo</Td>
-                    <Td align="right" className="text-ink-2">
+                    <Td align="right" className="whitespace-nowrap">
+                      {formatInr(PLAN_PRICE_INR[s.planTier] ?? null)}/mo
+                    </Td>
+                    <Td align="right" className="text-ink-2 whitespace-nowrap">
                       {formatDate(s.currentPeriodEnd)}
+                    </Td>
+                    <Td align="right">
+                      <ViewSheet
+                        title="Subscription"
+                        fields={[
+                          { label: "Plan", value: s.planTier },
+                          { label: "Status", value: s.status },
+                          { label: "Cancels", value: s.cancelAtPeriodEnd ? "At period end" : "No" },
+                          { label: "Price", value: `${formatInr(PLAN_PRICE_INR[s.planTier] ?? null)}/mo` },
+                          { label: "Period ends", value: s.currentPeriodEnd ? new Date(s.currentPeriodEnd).toLocaleString() : "—" },
+                          { label: "Started", value: s.createdAt ? new Date(s.createdAt).toLocaleString() : "—" },
+                          { label: "ID", value: s.id },
+                        ]}
+                      />
                     </Td>
                   </tr>
                 ))}

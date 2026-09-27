@@ -1,9 +1,19 @@
 import type { Document } from "mongodb";
 import { adminDb } from "../mongodb";
+import { sinceFilter, type ResolvedRange } from "../range";
 import { escapeRegex, num, toObjectId, usersById } from "./common";
 import { toPromptRow } from "./prompts";
 
 export const USERS_PAGE_SIZE = 25;
+
+export const USER_SORTS = {
+  recent: { label: "Newest", field: "createdAt" as const, dir: -1 as const },
+  spend: { label: "Highest spend", field: "costUsd" as const, dir: -1 as const },
+  prompts: { label: "Most prompts", field: "prompts" as const, dir: -1 as const },
+  credits: { label: "Most credits", field: "credits" as const, dir: -1 as const },
+  seen: { label: "Last seen", field: "lastSeenAt" as const, dir: -1 as const },
+} as const;
+export type UserSort = keyof typeof USER_SORTS;
 
 export interface CreditBalance {
   planTier: string;
@@ -44,11 +54,19 @@ export interface UserRow {
   lastPromptAt: string | null;
 }
 
-export async function listUsers({ q, page }: { q?: string; page: number }) {
+export interface UserFilters {
+  q?: string;
+  page: number;
+  sort: UserSort;
+  plan?: string;
+  range: ResolvedRange;
+}
+
+export async function listUsers(filters: UserFilters) {
   const db = await adminDb();
-  const where: Document = {};
-  if (q) {
-    const pattern = { $regex: escapeRegex(q.slice(0, 200)), $options: "i" };
+  const where: Document = { ...sinceFilter("createdAt", filters.range) };
+  if (filters.q) {
+    const pattern = { $regex: escapeRegex(filters.q.slice(0, 200)), $options: "i" };
     where.$or = [{ email: pattern }, { name: pattern }];
   }
 
@@ -57,11 +75,11 @@ export async function listUsers({ q, page }: { q?: string; page: number }) {
       .collection("user")
       .find(where, { projection: { name: 1, email: 1, image: 1, createdAt: 1 } })
       .sort({ createdAt: -1 })
-      .skip((page - 1) * USERS_PAGE_SIZE)
-      .limit(USERS_PAGE_SIZE)
       .toArray(),
     db.collection("user").countDocuments(where),
   ]);
+
+  if (docs.length === 0) return { rows: [] as UserRow[], total: 0 };
 
   const ids = docs.map((d) => d._id.toHexString());
   const [accounts, subs, usage, sessions] = await Promise.all([
@@ -93,7 +111,7 @@ export async function listUsers({ q, page }: { q?: string; page: number }) {
   const usageBy = new Map(usage.map((u) => [u._id, u]));
   const seenBy = new Map(sessions.map((s) => [String(s._id), s.last]));
 
-  const rows: UserRow[] = docs.map((doc) => {
+  let rows: UserRow[] = docs.map((doc) => {
     const id = doc._id.toHexString();
     const account = toBalance(accountBy.get(id));
     const sub = subBy.get(id);
@@ -115,7 +133,23 @@ export async function listUsers({ q, page }: { q?: string; page: number }) {
     };
   });
 
-  return { rows, total };
+  if (filters.plan) rows = rows.filter((r) => r.plan === filters.plan);
+
+  const sortDef = USER_SORTS[filters.sort];
+  const dir = sortDef.dir;
+  rows.sort((a, b) => {
+    const av = a[sortDef.field];
+    const bv = b[sortDef.field];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+    return String(av).localeCompare(String(bv)) * dir;
+  });
+
+  const filteredTotal = filters.plan ? rows.length : total;
+  const start = (filters.page - 1) * USERS_PAGE_SIZE;
+  return { rows: rows.slice(start, start + USERS_PAGE_SIZE), total: filteredTotal };
 }
 
 export async function getUser(id: string) {

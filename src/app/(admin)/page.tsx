@@ -4,7 +4,7 @@ import { ColumnChart } from "@/components/charts/ColumnChart";
 import { PromptsTable } from "@/components/PromptsTable";
 import { Card, PageHeader, RangeFilter, StatTile } from "@/components/ui";
 import { getOverview } from "@/lib/data/overview";
-import { formatCompact, formatInr, formatInt, formatPercent, formatUsd } from "@/lib/format";
+import { formatCompact, formatInr, formatInt, formatMoney, formatPercent, formatUsd } from "@/lib/format";
 import { resolveRange } from "@/lib/range";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-sm font-medium text-ink-2">AI spend</p>
-            <p className="mt-1 text-5xl font-semibold tracking-tight text-ink">{formatUsd(totals.costUsd)}</p>
+            <p className="mt-1 text-5xl font-semibold tracking-tight text-ink">{formatMoney(totals.costUsd)}</p>
             <p className="mt-2 text-sm text-ink-2">
               across {formatInt(totals.prompts)} prompts · {formatUsd(totals.prompts ? totals.costUsd / totals.prompts : 0)} per prompt
             </p>
@@ -86,7 +86,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               label: u.user ? u.user.name || u.user.email : "Anonymous",
               href: u.userId ? `/users/${u.userId}` : undefined,
               value: u.costUsd,
-              display: formatUsd(u.costUsd),
+              display: formatMoney(u.costUsd),
               sub: `${formatInt(u.prompts)} prompts`,
             }))}
           />
@@ -97,7 +97,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               key: m.model,
               label: m.model,
               value: m.costUsd,
-              display: formatUsd(m.costUsd),
+              display: formatMoney(m.costUsd),
               sub: `${formatCompact(m.calls)} calls`,
             }))}
           />

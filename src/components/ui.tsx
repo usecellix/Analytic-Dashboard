@@ -141,7 +141,7 @@ export function Th({ children, align = "left", className = "" }: { children?: Re
 export function Td({ children, align = "left", className = "" }: { children?: ReactNode; align?: "left" | "right"; className?: string }) {
   return (
     <td
-      className={`border-b border-line px-4 py-3 align-middle text-ink first:pl-5 last:pr-5 ${align === "right" ? "num whitespace-nowrap text-right" : ""} ${className}`}
+      className={`border-b border-line px-4 py-2 align-middle text-ink first:pl-5 last:pr-5 ${align === "right" ? "num whitespace-nowrap text-right" : ""} ${className}`}
     >
       {children}
     </td>
@@ -181,13 +181,12 @@ export function Avatar({ name, email, image, size = 28 }: { name?: string; email
 
 export function UserCell({ user, fallback }: { user: { id: string; name: string; email: string; image?: string | null } | null; fallback?: string }) {
   if (!user) return <span className="text-ink-3">{fallback ?? "Anonymous"}</span>;
+  const primary = user.name || user.email;
   return (
-    <Link href={`/users/${user.id}`} className="group flex min-w-0 items-center gap-2.5">
-      <Avatar name={user.name} email={user.email} image={user.image} size={24} />
-      <span className="min-w-0">
-        <span className="block truncate font-medium text-ink group-hover:underline">{user.name || user.email}</span>
-        {user.name ? <span className="block truncate text-xs text-ink-3">{user.email}</span> : null}
-      </span>
+    <Link href={`/users/${user.id}`} className="group flex min-w-0 items-center gap-2" title={user.email}>
+      <Avatar name={user.name} email={user.email} image={user.image} size={22} />
+      <span className="truncate font-medium text-ink group-hover:underline">{primary}</span>
+      {user.name && user.email ? <span className="truncate text-xs text-ink-3">{user.email}</span> : null}
     </Link>
   );
 }
@@ -239,12 +238,14 @@ export function Pagination({
   total,
   basePath,
   params,
+  pageKey = "page",
 }: {
   page: number;
   pageSize: number;
   total: number;
   basePath: string;
   params: Record<string, string | undefined>;
+  pageKey?: string;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -253,7 +254,7 @@ export function Pagination({
     disabled ? (
       <span className="rounded-md border border-line px-2.5 py-1 text-xs text-ink-3 opacity-50">{label}</span>
     ) : (
-      <Link href={withParams(basePath, { ...params, page: p })} className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover">
+      <Link href={withParams(basePath, { ...params, [pageKey]: p })} className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-hover">
         {label}
       </Link>
     );

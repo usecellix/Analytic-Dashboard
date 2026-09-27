@@ -1,6 +1,9 @@
 const compactFmt = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 const intFmt = new Intl.NumberFormat("en-US");
 
+/** Approximate USD→INR for display. Override with USD_TO_INR env if needed. */
+export const USD_TO_INR = Number(process.env.USD_TO_INR) || 86;
+
 export function formatInt(value: number | null | undefined): string {
   return value == null ? "—" : intFmt.format(Math.round(value));
 }
@@ -22,6 +25,20 @@ export function formatUsd(value: number | null | undefined): string {
 export function formatInr(value: number | null | undefined): string {
   if (value == null) return "—";
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+export function usdToInr(usd: number | null | undefined): number | null {
+  if (usd == null) return null;
+  return usd * USD_TO_INR;
+}
+
+/** Single-line USD with INR equivalent: `$1.23 · ₹106`. */
+export function formatMoney(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  const inr = usdToInr(usd)!;
+  const inrDigits = Math.abs(inr) >= 1 ? 0 : Math.abs(inr) >= 0.01 ? 2 : 4;
+  const inrStr = `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: inrDigits, maximumFractionDigits: inrDigits })}`;
+  return `${formatUsd(usd)} · ${inrStr}`;
 }
 
 export function formatMs(ms: number | null | undefined): string {
