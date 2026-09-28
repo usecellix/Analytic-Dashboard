@@ -1,7 +1,6 @@
-import type { Db, Document, WithId } from "mongodb";
-import { adminDb } from "../mongodb";
-import { sinceFilter, type ResolvedRange } from "../range";
-import { CREDITS_PER_USD, creditsDebitedBy, escapeRegex, num, usersById, type UserSummary } from "./common";
+import { adminApiGet, adminApiGetOrNull } from "../adminApi";
+import type { ResolvedRange } from "../range";
+import type { UserSummary } from "./common";
 
 export interface PromptRow {
   promptId: string;
@@ -32,48 +31,11 @@ export interface PromptRow {
   lastError: string | null;
 }
 
-export function toPromptRow(doc: WithId<Document>, people: Map<string, UserSummary>): PromptRow {
-  const userId = (doc.userId as string | undefined) ?? null;
-  return {
-    promptId: doc.promptId,
-    prompt: doc.prompt ?? "",
-    userId,
-    user: userId ? (people.get(userId) ?? null) : null,
-    conversationId: doc.conversationId ?? null,
-    mode: doc.mode ?? null,
-    route: doc.route ?? null,
-    tier: typeof doc.tier === "number" ? doc.tier : null,
-    createdAt: new Date(doc.createdAt).toISOString(),
-    lastActivityAt: new Date(doc.lastActivityAt ?? doc.createdAt).toISOString(),
-    requestCount: num(doc.requestCount),
-    llmCalls: num(doc.llmCalls),
-    failedCalls: num(doc.failedCalls),
-    promptTokens: num(doc.promptTokens),
-    completionTokens: num(doc.completionTokens),
-    reasoningTokens: num(doc.reasoningTokens),
-    cachedTokens: num(doc.cachedTokens),
-    totalTokens: num(doc.totalTokens),
-    costUsd: num(doc.costUsd),
-    creditsCharged: 0,
-    llmLatencyMs: num(doc.llmLatencyMs),
-    requestDurationMs: num(doc.requestDurationMs),
-    models: Array.isArray(doc.models) ? doc.models : [],
-    outcome: doc.lastOutcome === "error" ? "error" : doc.lastOutcome === "ok" ? "ok" : "running",
-    lastError: doc.lastError ?? null,
-  };
-}
-
-/** Fills creditsCharged from credit_ledger for a page of prompt rows. */
-export async function withCreditsCharged(db: Db, rows: PromptRow[]): Promise<PromptRow[]> {
-  const charged = await creditsDebitedBy(db, "promptId", rows.map((r) => r.promptId));
-  return rows.map((r) => ({ ...r, creditsCharged: charged.get(r.promptId) ?? 0 }));
-}
-
 export const PROMPT_SORTS = {
-  recent: { label: "Newest", sort: { createdAt: -1 } },
-  cost: { label: "Highest cost", sort: { costUsd: -1 } },
-  tokens: { label: "Most tokens", sort: { totalTokens: -1 } },
-  calls: { label: "Most calls", sort: { llmCalls: -1 } },
+  recent: { label: "Newest" },
+  cost: { label: "Highest cost" },
+  tokens: { label: "Most tokens" },
+  calls: { label: "Most calls" },
 } as const;
 export type PromptSort = keyof typeof PROMPT_SORTS;
 
@@ -88,55 +50,20 @@ export interface PromptFilters {
 
 export const PROMPTS_PAGE_SIZE = 25;
 
-export async function listPrompts(filters: PromptFilters) {
-  const db = await adminDb();
-  const where: Document = { ...sinceFilter("createdAt", filters.range) };
-  if (filters.userId) where.userId = filters.userId;
-  if (filters.status) where.lastOutcome = filters.status;
-  if (filters.q) where.prompt = { $regex: escapeRegex(filters.q.slice(0, 200)), $options: "i" };
-
-  const prompts = db.collection("ai_prompts");
-  const [docs, total, sums] = await Promise.all([
-    prompts
-      .find(where)
-      .sort({ ...PROMPT_SORTS[filters.sort].sort, _id: -1 })
-      .skip((filters.page - 1) * PROMPTS_PAGE_SIZE)
-      .limit(PROMPTS_PAGE_SIZE)
-      .toArray(),
-    prompts.countDocuments(where),
-    prompts
-      .aggregate([
-        { $match: where },
-        { $lookup: { from: "credit_ledger", localField: "promptId", foreignField: "promptId", as: "ledger" } },
-        {
-          $group: {
-            _id: null,
-            costUsd: { $sum: "$costUsd" },
-            tokens: { $sum: "$totalTokens" },
-            calls: { $sum: "$llmCalls" },
-            credits: {
-              $sum: {
-                $sum: {
-                  $map: {
-                    input: { $filter: { input: "$ledger", cond: { $eq: ["$$this.entryType", "debit"] } } },
-                    in: { $multiply: ["$$this.amount", -1] },
-                  },
-                },
-              },
-            },
-          },
-        },
-      ])
-      .toArray(),
-  ]);
-
-  const people = await usersById(db, docs.map((d) => d.userId as string | undefined));
-  const s = sums[0] ?? {};
-  return {
-    rows: await withCreditsCharged(db, docs.map((d) => toPromptRow(d, people))),
-    total,
-    sums: { costUsd: num(s.costUsd), tokens: num(s.tokens), calls: num(s.calls), credits: num(s.credits) },
-  };
+/** Pulled from cellix_backend's GET /admin/prompts (AdminPromptsService.listPrompts). */
+export async function listPrompts(filters: PromptFilters): Promise<{
+  rows: PromptRow[];
+  total: number;
+  sums: { costUsd: number; tokens: number; calls: number; credits: number };
+}> {
+  return adminApiGet("/admin/prompts", {
+    range: filters.range.key,
+    userId: filters.userId,
+    status: filters.status,
+    q: filters.q,
+    sort: filters.sort,
+    page: filters.page,
+  });
 }
 
 export interface CallRow {
@@ -173,68 +100,16 @@ export interface Breakdown {
   latencyMs: number;
 }
 
-function breakdown(calls: CallRow[], keyOf: (c: CallRow) => string): Breakdown[] {
-  const map = new Map<string, Breakdown>();
-  for (const call of calls) {
-    const key = keyOf(call);
-    const row = map.get(key) ?? { key, calls: 0, failed: 0, tokens: 0, costUsd: 0, latencyMs: 0 };
-    row.calls += 1;
-    row.failed += call.success ? 0 : 1;
-    row.tokens += call.totalTokens;
-    row.costUsd += call.costUsd;
-    row.latencyMs += call.latencyMs;
-    map.set(key, row);
-  }
-  return [...map.values()].sort((a, b) => b.costUsd - a.costUsd || b.calls - a.calls);
+export interface PromptDetail {
+  prompt: PromptRow;
+  calls: CallRow[];
+  byCaller: Breakdown[];
+  byModel: Breakdown[];
+  retries: number;
+  estimatedCostCalls: number;
 }
 
-export async function getPrompt(promptId: string) {
-  const db = await adminDb();
-  const doc = await db.collection("ai_prompts").findOne({ promptId });
-  if (!doc) return null;
-
-  const callDocs = await db.collection("llm_calls").find({ promptId }).sort({ ts: 1 }).limit(2000).toArray();
-  const people = await usersById(db, [doc.userId as string | undefined]);
-  const calls: CallRow[] = callDocs.map((c) => {
-    const ts = new Date(c.ts);
-    const latencyMs = num(c.latencyMs);
-    return {
-      id: c._id.toHexString(),
-      ts: ts.toISOString(),
-      // Rows are written when a call finishes, so the start is derived.
-      startedAt: new Date(ts.getTime() - latencyMs).toISOString(),
-      model: c.model,
-      servedModel: c.servedModel ?? null,
-      caller: c.caller ?? "unknown",
-      attempt: num(c.attempt) || 1,
-      streaming: Boolean(c.streaming),
-      promptTokens: num(c.promptTokens),
-      completionTokens: num(c.completionTokens),
-      reasoningTokens: num(c.reasoningTokens),
-      cachedTokens: num(c.cachedTokens),
-      totalTokens: num(c.totalTokens),
-      costUsd: num(c.costUsd),
-      creditsEquivalent: num(c.costUsd) * CREDITS_PER_USD,
-      costEstimated: Boolean(c.costEstimated),
-      latencyMs,
-      success: Boolean(c.success),
-      finishReason: c.finishReason ?? null,
-      errorStatus: typeof c.errorStatus === "number" ? c.errorStatus : null,
-      errorMessage: c.errorMessage ?? null,
-    };
-  });
-  // Stored order is completion order; a timeline reads in start order.
-  calls.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-
-  const [prompt] = await withCreditsCharged(db, [toPromptRow(doc, people)]);
-  return {
-    prompt,
-    calls,
-    byCaller: breakdown(calls, (c) => c.caller),
-    byModel: breakdown(calls, (c) => c.servedModel ?? c.model),
-    retries: calls.filter((c) => c.attempt > 1).length,
-    estimatedCostCalls: calls.filter((c) => c.costEstimated).length,
-  };
+/** Pulled from cellix_backend's GET /admin/prompts/:promptId (AdminPromptsService.getPrompt). */
+export async function getPrompt(promptId: string): Promise<PromptDetail | null> {
+  return adminApiGetOrNull<PromptDetail>(`/admin/prompts/${encodeURIComponent(promptId)}`);
 }
-
-export type PromptDetail = NonNullable<Awaited<ReturnType<typeof getPrompt>>>;

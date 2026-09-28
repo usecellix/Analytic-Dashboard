@@ -3,10 +3,9 @@ import Link from "next/link";
 import { PromptsTable } from "@/components/PromptsTable";
 import { FilterSearch, FilterSelect, FilterSubmit, HiddenFilters, TableFilters } from "@/components/TableControls";
 import { Card, PageHeader, Pagination, pageParam, RangeFilter, stringParam } from "@/components/ui";
-import { usersById } from "@/lib/data/common";
 import { listPrompts, PROMPT_SORTS, PROMPTS_PAGE_SIZE, type PromptSort } from "@/lib/data/prompts";
+import { getUser } from "@/lib/data/users";
 import { formatCompact, formatInt, formatMoney } from "@/lib/format";
-import { adminDb } from "@/lib/mongodb";
 import { resolveRange } from "@/lib/range";
 
 export const metadata: Metadata = { title: "Prompts" };
@@ -26,7 +25,7 @@ export default async function PromptsPage({ searchParams }: { searchParams: Prom
   const page = pageParam(params.page);
 
   const { rows, total, sums } = await listPrompts({ range, q, userId, status, sort, page });
-  const filterUser = userId ? (await usersById(await adminDb(), [userId])).get(userId) : undefined;
+  const filterUser = userId ? (await getUser(userId))?.user : undefined;
   const keep = { range: range.key, q, user: userId, status, sort: sort === "recent" ? undefined : sort };
 
   return (

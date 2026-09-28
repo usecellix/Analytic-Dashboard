@@ -1,23 +1,31 @@
-# Cellix Agent Logs Dashboard
+# Cellix Admin Dashboard
 
-Next.js + Tailwind UI over the same MongoDB as `cellix_backend`.
+Next.js admin app — password-gated, reads through `cellix_backend`'s
+`/admin/*` routes (`AdminGuard`), not a direct MongoDB connection. See
+`TASKS.md` (admin-api-migration) for why: writes from this app (planned)
+should go through the backend's own credit/audit logic, not a second
+codebase writing Mongo directly.
 
 ## Setup
 
 ```bash
 cd Dashboard
 npm install
-cp .env.local.example .env.local   # or edit .env.local
-npm run import-logs                # optional: seed from logs/*.log
+cp .env.local.example .env.local   # then fill in the values below
 npm run dev                        # http://localhost:3100
 ```
 
-Env (same as backend):
+`.env.local`:
 
 ```
-MONGODB_URL=mongodb://127.0.0.1:27017/Cellix
-MONGODB_DB_NAME=cellix
+ADMIN_PASSWORD=                # required — locks the whole app until set
+CELLIX_API_URL=http://localhost:4001   # cellix_backend's base URL
+CELLIX_ADMIN_API_TOKEN=        # must equal cellix_backend's own CELLIX_ADMIN_API_TOKEN
 ```
+
+`cellix_backend` needs `CELLIX_ADMIN_API_TOKEN` set to the same value, or
+every request here 401s (AdminGuard fails closed when it's unset — the
+admin API is off, not open).
 
 ## Pages
 
