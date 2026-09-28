@@ -1,8 +1,8 @@
 import type { Document } from "mongodb";
 import { adminDb } from "../mongodb";
 import { sinceFilter, type ResolvedRange } from "../range";
-import { escapeRegex, num, toObjectId, usersById } from "./common";
-import { toPromptRow } from "./prompts";
+import { creditsDebitedBy, escapeRegex, num, toObjectId, usersById } from "./common";
+import { toPromptRow, withCreditsCharged } from "./prompts";
 
 export const USERS_PAGE_SIZE = 25;
 
@@ -11,6 +11,7 @@ export const USER_SORTS = {
   spend: { label: "Highest spend", field: "costUsd" as const, dir: -1 as const },
   prompts: { label: "Most prompts", field: "prompts" as const, dir: -1 as const },
   credits: { label: "Most credits", field: "credits" as const, dir: -1 as const },
+  creditsUsed: { label: "Most credits used", field: "creditsUsed" as const, dir: -1 as const },
   seen: { label: "Last seen", field: "lastSeenAt" as const, dir: -1 as const },
 } as const;
 export type UserSort = keyof typeof USER_SORTS;
@@ -49,6 +50,8 @@ export interface UserRow {
   plan: string;
   subscriptionStatus: string | null;
   credits: number | null;
+  /** All-time credits debited (credit_ledger). */
+  creditsUsed: number;
   prompts: number;
   costUsd: number;
   lastPromptAt: string | null;
@@ -82,7 +85,7 @@ export async function listUsers(filters: UserFilters) {
   if (docs.length === 0) return { rows: [] as UserRow[], total: 0 };
 
   const ids = docs.map((d) => d._id.toHexString());
-  const [accounts, subs, usage, sessions] = await Promise.all([
+  const [accounts, subs, usage, sessions, used] = await Promise.all([
     db.collection("credit_accounts").find({ billingEntityId: { $in: ids } }).toArray(),
     db
       .collection("subscriptions")
@@ -103,6 +106,7 @@ export async function listUsers(filters: UserFilters) {
         { $group: { _id: "$userId", last: { $max: "$updatedAt" } } },
       ])
       .toArray(),
+    creditsDebitedBy(db, "billingEntityId", ids),
   ]);
 
   const accountBy = new Map(accounts.map((a) => [a.billingEntityId as string, a]));
@@ -127,6 +131,7 @@ export async function listUsers(filters: UserFilters) {
       plan: account?.planTier ?? "free",
       subscriptionStatus: sub?.status ?? null,
       credits: account?.total ?? null,
+      creditsUsed: used.get(id) ?? 0,
       prompts: use?.prompts ?? 0,
       costUsd: use?.costUsd ?? 0,
       lastPromptAt: use?.last ? new Date(use.last).toISOString() : null,
@@ -160,7 +165,7 @@ export async function getUser(id: string) {
   if (!doc) return null;
 
   const since30 = new Date(Date.now() - 30 * 86_400_000);
-  const [account, subs, ledger, recent, allTime, last30, sessionAgg, conversations, oauth] = await Promise.all([
+  const [account, subs, ledger, recent, allTime, last30, sessionAgg, conversations, oauth, usedAll, used30] = await Promise.all([
     db.collection("credit_accounts").findOne({ billingEntityId: id }),
     db.collection("subscriptions").find({ billingEntityId: id }).sort({ createdAt: -1 }).toArray(),
     db.collection("credit_ledger").find({ billingEntityId: id }).sort({ createdAt: -1 }).limit(25).toArray(),
@@ -176,6 +181,8 @@ export async function getUser(id: string) {
       .toArray(),
     db.collection("conversations").countDocuments({ userId: id }),
     db.collection("account").find({ userId: objectId }, { projection: { providerId: 1 } }).toArray(),
+    creditsDebitedBy(db, "billingEntityId", [id]),
+    creditsDebitedBy(db, "billingEntityId", [id], { createdAt: { $gte: since30 } }),
   ]);
 
   const people = await usersById(db, [id]);
@@ -204,8 +211,11 @@ export async function getUser(id: string) {
       createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
     })),
     ledger: ledger.map(toLedgerRow),
-    recentPrompts: recent.map((p) => toPromptRow(p, people)),
-    usage: { allTime, last30 },
+    recentPrompts: await withCreditsCharged(db, recent.map((p) => toPromptRow(p, people))),
+    usage: {
+      allTime: { ...allTime, creditsUsed: usedAll.get(id) ?? 0 },
+      last30: { ...last30, creditsUsed: used30.get(id) ?? 0 },
+    },
   };
 }
 

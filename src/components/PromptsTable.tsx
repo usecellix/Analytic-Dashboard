@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PromptRow } from "@/lib/data/prompts";
-import { formatCompact, formatMoney, formatMs, formatRelative, truncate } from "@/lib/format";
+import { formatCompact, formatInt, formatMoney, formatMs, formatRelative, truncate } from "@/lib/format";
 import { ViewSheet } from "./Sheet";
 import { EmptyState, OutcomeBadge, Table, Td, Th, UserCell } from "./ui";
 
@@ -26,6 +26,7 @@ export function PromptsTable({ rows, compact = false, hideUser = false }: { rows
           <Th align="right">Calls</Th>
           <Th align="right">Tokens</Th>
           <Th align="right">Cost</Th>
+          <Th align="right">Credits</Th>
           {compact ? null : <Th align="right">Time</Th>}
           <Th>Status</Th>
           <Th align="right">When</Th>
@@ -61,6 +62,9 @@ export function PromptsTable({ rows, compact = false, hideUser = false }: { rows
               <Td align="right" className="font-medium whitespace-nowrap">
                 {formatMoney(row.costUsd)}
               </Td>
+              <Td align="right" className="whitespace-nowrap">
+                {row.creditsCharged ? formatInt(row.creditsCharged) : <span className="text-ink-3">—</span>}
+              </Td>
               {compact ? null : <Td align="right">{formatMs(row.requestDurationMs || null)}</Td>}
               <Td>
                 <OutcomeBadge outcome={row.outcome} />
@@ -81,6 +85,7 @@ export function PromptsTable({ rows, compact = false, hideUser = false }: { rows
                     { label: "Calls", value: `${formatCompact(row.llmCalls)}${row.failedCalls ? ` (${row.failedCalls} failed)` : ""}` },
                     { label: "Tokens", value: formatCompact(row.totalTokens) },
                     { label: "Cost", value: formatMoney(row.costUsd) },
+                    { label: "Credits charged", value: formatInt(row.creditsCharged) },
                     { label: "Duration", value: formatMs(row.requestDurationMs || null) },
                     { label: "When", value: new Date(row.createdAt).toLocaleString() },
                     { label: "Models", value: row.models.join(", ") || "—" },

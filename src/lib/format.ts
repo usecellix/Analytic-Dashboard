@@ -8,6 +8,14 @@ export function formatInt(value: number | null | undefined): string {
   return value == null ? "—" : intFmt.format(Math.round(value));
 }
 
+/** Credits, keeping one or two decimals for the sub-credit amounts a single model call often costs. */
+export function formatCredits(value: number | null | undefined): string {
+  if (value == null) return "—";
+  const abs = Math.abs(value);
+  const digits = abs >= 100 || abs === 0 ? 0 : abs >= 1 ? 1 : 2;
+  return value.toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
 export function formatCompact(value: number | null | undefined): string {
   if (value == null) return "—";
   return Math.abs(value) < 10_000 ? intFmt.format(Math.round(value)) : compactFmt.format(value);

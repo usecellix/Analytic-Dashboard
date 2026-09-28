@@ -63,7 +63,7 @@ export default async function PromptsPage({ searchParams }: { searchParams: Prom
       <Card
         flush
         title={`${formatInt(total)} prompts`}
-        description={`${formatMoney(sums.costUsd)} spend · ${formatCompact(sums.calls)} model calls · ${formatCompact(sums.tokens)} tokens`}
+        description={`${formatMoney(sums.costUsd)} spend · ${formatInt(sums.credits)} credits charged · ${formatCompact(sums.calls)} model calls · ${formatCompact(sums.tokens)} tokens`}
       >
         <PromptsTable rows={rows} />
         {total > PROMPTS_PAGE_SIZE ? (

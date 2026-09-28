@@ -7,7 +7,7 @@ import { routeLabel } from "@/components/PromptsTable";
 import { ViewSheet } from "@/components/Sheet";
 import { Badge, Card, OutcomeBadge, StatTile, Table, Td, Th, UserCell } from "@/components/ui";
 import { getPrompt, type Breakdown } from "@/lib/data/prompts";
-import { formatCompact, formatDateTime, formatInt, formatMoney, formatMs, formatPercent } from "@/lib/format";
+import { formatCompact, formatCredits, formatDateTime, formatInt, formatMoney, formatMs, formatPercent } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Prompt" };
 export const dynamic = "force-dynamic";
@@ -104,11 +104,16 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
         ) : null}
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatTile
           label="Total cost"
           value={formatMoney(prompt.costUsd)}
           hint={detail.estimatedCostCalls ? `${detail.estimatedCostCalls} call(s) estimated` : "Provider-billed"}
+        />
+        <StatTile
+          label="Credits charged"
+          value={formatInt(prompt.creditsCharged)}
+          hint={prompt.creditsCharged ? "Debited from the user's balance" : "Nothing debited (unbilled or anonymous)"}
         />
         <StatTile
           label="Model calls"
@@ -172,6 +177,11 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
               <Th align="right">Reasoning</Th>
               <Th align="right">Latency</Th>
               <Th align="right">Cost</Th>
+              <Th align="right">
+                <span title="Cost × credits-per-USD. Credits are debited per request, rounded up, so these sum to slightly less than Credits charged.">
+                  Credits ≈
+                </span>
+              </Th>
               <Th>Status</Th>
               <Th align="right">Actions</Th>
             </tr>
@@ -206,6 +216,9 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
                   {formatMoney(call.costUsd)}
                   {call.costEstimated ? <span className="ml-1 text-xs font-normal text-ink-3" title="Provider returned no cost; priced from the model table">est.</span> : null}
                 </Td>
+                <Td align="right" className="whitespace-nowrap text-ink-2">
+                  {formatCredits(call.creditsEquivalent)}
+                </Td>
                 <Td>
                   {call.success ? (
                     <Badge tone={TRUNCATED.has(call.finishReason ?? "") ? "warning" : "good"} dot>
@@ -233,6 +246,7 @@ export default async function PromptPage({ params }: { params: Promise<{ id: str
                       { label: "Reasoning", value: formatCompact(call.reasoningTokens) },
                       { label: "Latency", value: formatMs(call.latencyMs) },
                       { label: "Cost", value: `${formatMoney(call.costUsd)}${call.costEstimated ? " (est.)" : ""}` },
+                      { label: "Credits ≈", value: formatCredits(call.creditsEquivalent) },
                       { label: "Finish", value: call.finishReason || "—" },
                       { label: "Error", value: call.errorMessage || "—" },
                       { label: "Started", value: new Date(call.startedAt).toLocaleString() },

@@ -1,7 +1,7 @@
-import type { Document, WithId } from "mongodb";
+import type { Db, Document, WithId } from "mongodb";
 import { adminDb } from "../mongodb";
 import { sinceFilter, type ResolvedRange } from "../range";
-import { escapeRegex, num, usersById, type UserSummary } from "./common";
+import { CREDITS_PER_USD, creditsDebitedBy, escapeRegex, num, usersById, type UserSummary } from "./common";
 
 export interface PromptRow {
   promptId: string;
@@ -23,6 +23,8 @@ export interface PromptRow {
   cachedTokens: number;
   totalTokens: number;
   costUsd: number;
+  /** Credits debited for this prompt (credit_ledger). 0 for unbilled/anonymous prompts. */
+  creditsCharged: number;
   llmLatencyMs: number;
   requestDurationMs: number;
   models: string[];
@@ -52,12 +54,19 @@ export function toPromptRow(doc: WithId<Document>, people: Map<string, UserSumma
     cachedTokens: num(doc.cachedTokens),
     totalTokens: num(doc.totalTokens),
     costUsd: num(doc.costUsd),
+    creditsCharged: 0,
     llmLatencyMs: num(doc.llmLatencyMs),
     requestDurationMs: num(doc.requestDurationMs),
     models: Array.isArray(doc.models) ? doc.models : [],
     outcome: doc.lastOutcome === "error" ? "error" : doc.lastOutcome === "ok" ? "ok" : "running",
     lastError: doc.lastError ?? null,
   };
+}
+
+/** Fills creditsCharged from credit_ledger for a page of prompt rows. */
+export async function withCreditsCharged(db: Db, rows: PromptRow[]): Promise<PromptRow[]> {
+  const charged = await creditsDebitedBy(db, "promptId", rows.map((r) => r.promptId));
+  return rows.map((r) => ({ ...r, creditsCharged: charged.get(r.promptId) ?? 0 }));
 }
 
 export const PROMPT_SORTS = {
@@ -98,7 +107,25 @@ export async function listPrompts(filters: PromptFilters) {
     prompts
       .aggregate([
         { $match: where },
-        { $group: { _id: null, costUsd: { $sum: "$costUsd" }, tokens: { $sum: "$totalTokens" }, calls: { $sum: "$llmCalls" } } },
+        { $lookup: { from: "credit_ledger", localField: "promptId", foreignField: "promptId", as: "ledger" } },
+        {
+          $group: {
+            _id: null,
+            costUsd: { $sum: "$costUsd" },
+            tokens: { $sum: "$totalTokens" },
+            calls: { $sum: "$llmCalls" },
+            credits: {
+              $sum: {
+                $sum: {
+                  $map: {
+                    input: { $filter: { input: "$ledger", cond: { $eq: ["$$this.entryType", "debit"] } } },
+                    in: { $multiply: ["$$this.amount", -1] },
+                  },
+                },
+              },
+            },
+          },
+        },
       ])
       .toArray(),
   ]);
@@ -106,9 +133,9 @@ export async function listPrompts(filters: PromptFilters) {
   const people = await usersById(db, docs.map((d) => d.userId as string | undefined));
   const s = sums[0] ?? {};
   return {
-    rows: docs.map((d) => toPromptRow(d, people)),
+    rows: await withCreditsCharged(db, docs.map((d) => toPromptRow(d, people))),
     total,
-    sums: { costUsd: num(s.costUsd), tokens: num(s.tokens), calls: num(s.calls) },
+    sums: { costUsd: num(s.costUsd), tokens: num(s.tokens), calls: num(s.calls), credits: num(s.credits) },
   };
 }
 
@@ -127,6 +154,8 @@ export interface CallRow {
   cachedTokens: number;
   totalTokens: number;
   costUsd: number;
+  /** costUsd × CREDITS_PER_USD — an equivalent, not a debit: billing is per request. */
+  creditsEquivalent: number;
   costEstimated: boolean;
   latencyMs: number;
   success: boolean;
@@ -185,6 +214,7 @@ export async function getPrompt(promptId: string) {
       cachedTokens: num(c.cachedTokens),
       totalTokens: num(c.totalTokens),
       costUsd: num(c.costUsd),
+      creditsEquivalent: num(c.costUsd) * CREDITS_PER_USD,
       costEstimated: Boolean(c.costEstimated),
       latencyMs,
       success: Boolean(c.success),
@@ -196,8 +226,9 @@ export async function getPrompt(promptId: string) {
   // Stored order is completion order; a timeline reads in start order.
   calls.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
+  const [prompt] = await withCreditsCharged(db, [toPromptRow(doc, people)]);
   return {
-    prompt: toPromptRow(doc, people),
+    prompt,
     calls,
     byCaller: breakdown(calls, (c) => c.caller),
     byModel: breakdown(calls, (c) => c.servedModel ?? c.model),

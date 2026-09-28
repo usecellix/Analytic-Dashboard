@@ -54,7 +54,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         </Link>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatTile label="AI spend, all time" value={formatMoney(usage.allTime.costUsd)} hint={`${formatMoney(usage.last30.costUsd)} in the last 30 days`} />
         <StatTile label="Prompts" value={formatInt(usage.allTime.prompts)} hint={`${formatInt(usage.last30.prompts)} in the last 30 days`} />
         <StatTile
@@ -66,6 +66,11 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
           label="Credit balance"
           value={balance ? formatInt(balance.total) : "—"}
           hint={balance ? `${formatInt(balance.planCredits)} plan · ${formatInt(balance.purchasedCredits)} bought · ${formatInt(balance.oneTimeCredits)} one-time` : "No credit account yet"}
+        />
+        <StatTile
+          label="Credits used"
+          value={formatInt(usage.allTime.creditsUsed)}
+          hint={`${formatInt(usage.last30.creditsUsed)} in the last 30 days`}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import { ObjectId, type Db } from "mongodb";
+import { ObjectId, type Db, type Document } from "mongodb";
 import type { ResolvedRange } from "../range";
 
 /** Monthly list prices (cellix_backend razorpay-checkout.service.ts). */
@@ -101,6 +101,37 @@ export function fillBuckets(
 
 export function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Must match the backend's CREDITS_PER_USD (app-config.service.ts). Only used
+ * to show a per-call credit equivalent — the backend debits per request, so
+ * the authoritative per-prompt figure comes from credit_ledger, not this.
+ */
+export const CREDITS_PER_USD = (() => {
+  const value = Number(process.env.CREDITS_PER_USD ?? 600);
+  return Number.isFinite(value) && value > 0 ? value : 600;
+})();
+
+/**
+ * Credits actually debited, from credit_ledger's debit rows, summed per
+ * `field` (promptId or billingEntityId). Debits are stored negative.
+ */
+export async function creditsDebitedBy(
+  db: Db,
+  field: "promptId" | "billingEntityId",
+  keys: string[],
+  extra: Document = {},
+): Promise<Map<string, number>> {
+  if (keys.length === 0) return new Map();
+  const rows = await db
+    .collection("credit_ledger")
+    .aggregate<{ _id: string; credits: number }>([
+      { $match: { [field]: { $in: keys }, entryType: "debit", ...extra } },
+      { $group: { _id: `$${field}`, credits: { $sum: { $multiply: ["$amount", -1] } } } },
+    ])
+    .toArray();
+  return new Map(rows.map((r) => [r._id, num(r.credits)]));
 }
 
 export function num(value: unknown): number {

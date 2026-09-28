@@ -72,7 +72,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               <tr>
                 <Th>User</Th>
                 <Th>Plan</Th>
-                <Th align="right">Credits</Th>
+                <Th align="right">Balance</Th>
+                <Th align="right">Credits used</Th>
                 <Th align="right">Prompts</Th>
                 <Th align="right">AI spend</Th>
                 <Th align="right">Last prompt</Th>
@@ -100,6 +101,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                     ) : null}
                   </Td>
                   <Td align="right">{u.credits == null ? <span className="text-ink-3">—</span> : formatInt(u.credits)}</Td>
+                  <Td align="right">{formatInt(u.creditsUsed)}</Td>
                   <Td align="right">{formatInt(u.prompts)}</Td>
                   <Td align="right" className="font-medium whitespace-nowrap">
                     {formatMoney(u.costUsd)}
@@ -121,7 +123,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                         { label: "Email", value: u.email },
                         { label: "Plan", value: u.plan },
                         { label: "Subscription", value: u.subscriptionStatus || "—" },
-                        { label: "Credits", value: u.credits == null ? "—" : formatInt(u.credits) },
+                        { label: "Credit balance", value: u.credits == null ? "—" : formatInt(u.credits) },
+                        { label: "Credits used", value: formatInt(u.creditsUsed) },
                         { label: "Prompts", value: formatInt(u.prompts) },
                         { label: "AI spend", value: formatMoney(u.costUsd) },
                         { label: "Last prompt", value: u.lastPromptAt ? new Date(u.lastPromptAt).toLocaleString() : "—" },
